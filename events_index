@@ -1,0 +1,324 @@
+class EventsIndex:
+    """
+    Klasa do efektywnego przechowywania i dostępu do zdarzeń zindeksowanych według daty i użytkownika.
+    Umożliwia szybkie wyszukiwanie zdarzeń dla konkretnej pary (użytkownik, data) oraz filtrowanie.
+    """
+
+    def __init__(self):
+        # Główny indeks - przechowuje zdarzenia w formacie {(user_id, date_str): [event1, event2, ...]}
+        self.user_date_index = {}
+
+        # Indeks wg dat - przechowuje zdarzenia w formacie {date_str: [event1, event2, ...]}
+        self.date_index = {}
+
+        # Indeks wg użytkowników - przechowuje zdarzenia w formacie {user_id: [event1, event2, ...]}
+        self.user_index = {}
+
+        # Indeks wg typu - przechowuje zdarzenia w formacie {event_type: [event1, event2, ...]}
+        self.type_index = {}
+
+        # Indeks wg ID - przechowuje zdarzenia w formacie {event_id: event}
+        self.id_index = {}
+
+        # Wszystkie zdarzenia w jednej liście
+        self.all_events = []
+
+    def clear(self):
+        """Czyści wszystkie indeksy"""
+        self.user_date_index.clear()
+        self.date_index.clear()
+        self.user_index.clear()
+        self.type_index.clear()
+        self.id_index.clear()
+        self.all_events.clear()
+
+    def add_event(self, event):
+        """
+        Dodaje zdarzenie do wszystkich indeksów
+
+        Args:
+            event (dict): Słownik reprezentujący zdarzenie
+        """
+        # Pobierz kluczowe pola z wydarzenia
+        user_id = str(event.get('user_id', ''))
+        event_date = event.get('date_key', '')
+        event_type = event.get('type', '')
+        event_id = event.get('id', 0)
+
+        # Standaryzacja formatu daty
+        date_str = self._standardize_date(event_date)
+
+        # Dodaj do głównego indeksu (user_id, date_str)
+        key = (user_id, date_str)
+        if key not in self.user_date_index:
+            self.user_date_index[key] = []
+        self.user_date_index[key].append(event)
+
+        # Dodaj do indeksu dat
+        if date_str not in self.date_index:
+            self.date_index[date_str] = []
+        self.date_index[date_str].append(event)
+
+        # Dodaj do indeksu użytkowników
+        if user_id not in self.user_index:
+            self.user_index[user_id] = []
+        self.user_index[user_id].append(event)
+
+        # Dodaj do indeksu typów
+        if event_type not in self.type_index:
+            self.type_index[event_type] = []
+        self.type_index[event_type].append(event)
+
+        # Dodaj do indeksu ID
+        if event_id:
+            self.id_index[event_id] = event
+
+        # Dodaj do listy wszystkich zdarzeń
+        self.all_events.append(event)
+
+    def build_from_events(self, events_list):
+        """
+        Buduje indeksy na podstawie listy zdarzeń
+
+        Args:
+            events_list (list): Lista słowników zdarzeń
+        """
+        self.clear()
+        for event in events_list:
+            self.add_event(event)
+        return self
+
+    def get_events_for_user_date(self, user_id, date_str):
+        """
+        Zwraca listę zdarzeń dla konkretnego użytkownika i daty
+
+        Args:
+            user_id (str): ID użytkownika
+            date_str (str): Data w formacie 'YYYY-MM-DD'
+
+        Returns:
+            list: Lista zdarzeń
+        """
+        user_id = str(user_id)
+        date_str = self._standardize_date(date_str)
+        key = (user_id, date_str)
+        return self.user_date_index.get(key, [])
+
+    def get_events_for_user(self, user_id):
+        """
+        Zwraca listę wszystkich zdarzeń dla konkretnego użytkownika
+
+        Args:
+            user_id (str): ID użytkownika
+
+        Returns:
+            list: Lista zdarzeń
+        """
+        user_id = str(user_id)
+        return self.user_index.get(user_id, [])
+
+    def get_events_for_date(self, date_str):
+        """
+        Zwraca listę wszystkich zdarzeń dla konkretnej daty
+
+        Args:
+            date_str (str): Data w formacie 'YYYY-MM-DD'
+
+        Returns:
+            list: Lista zdarzeń
+        """
+        date_str = self._standardize_date(date_str)
+        return self.date_index.get(date_str, [])
+
+    def get_events_by_type(self, event_type):
+        """
+        Zwraca listę wszystkich zdarzeń określonego typu
+
+        Args:
+            event_type (str): Typ zdarzenia
+
+        Returns:
+            list: Lista zdarzeń
+        """
+        return self.type_index.get(event_type, [])
+
+    def get_event_by_id(self, event_id):
+        """
+        Zwraca zdarzenie o określonym ID
+
+        Args:
+            event_id: ID zdarzenia
+
+        Returns:
+            dict: Zdarzenie lub None jeśli nie znaleziono
+        """
+        return self.id_index.get(event_id)
+
+    def delete_event(self, event_id):
+        """
+        Usuwa zdarzenie o określonym ID ze wszystkich indeksów
+
+        Args:
+            event_id: ID zdarzenia
+
+        Returns:
+            bool: True jeśli znaleziono i usunięto, False w przeciwnym wypadku
+        """
+        event = self.id_index.get(event_id)
+        if not event:
+            return False
+
+        # Usuń z indeksu ID
+        del self.id_index[event_id]
+
+        # Usuń z listy wszystkich zdarzeń
+        self.all_events = [e for e in self.all_events if e.get('id') != event_id]
+
+        # Usuń z pozostałych indeksów
+        user_id = str(event.get('user_id', ''))
+        event_date = event.get('date_key', '')
+        date_str = self._standardize_date(event_date)
+        event_type = event.get('type', '')
+
+        # Usuń z indeksu (user_id, date_str)
+        key = (user_id, date_str)
+        if key in self.user_date_index:
+            self.user_date_index[key] = [e for e in self.user_date_index[key] if e.get('id') != event_id]
+            if not self.user_date_index[key]:
+                del self.user_date_index[key]
+
+        # Usuń z indeksu dat
+        if date_str in self.date_index:
+            self.date_index[date_str] = [e for e in self.date_index[date_str] if e.get('id') != event_id]
+            if not self.date_index[date_str]:
+                del self.date_index[date_str]
+
+        # Usuń z indeksu użytkowników
+        if user_id in self.user_index:
+            self.user_index[user_id] = [e for e in self.user_index[user_id] if e.get('id') != event_id]
+            if not self.user_index[user_id]:
+                del self.user_index[user_id]
+
+        # Usuń z indeksu typów
+        if event_type in self.type_index:
+            self.type_index[event_type] = [e for e in self.type_index[event_type] if e.get('id') != event_id]
+            if not self.type_index[event_type]:
+                del self.type_index[event_type]
+
+        return True
+
+    def filter_events(self, **kwargs):
+        """
+        Filtruje zdarzenia według podanych kryteriów
+
+        Args:
+            **kwargs: Kryteria filtrowania (user_id, date_from, date_to, type, etc.)
+
+        Returns:
+            list: Lista przefiltrowanych zdarzeń
+        """
+        # Określ najbardziej efektywny indeks do rozpoczęcia filtrowania
+        filtered_events = None
+
+        # Jeśli podano konkretnego użytkownika i datę, użyj głównego indeksu
+        if 'user_id' in kwargs and 'date' in kwargs:
+            user_id = str(kwargs['user_id'])
+            date_str = self._standardize_date(kwargs['date'])
+            key = (user_id, date_str)
+            filtered_events = self.user_date_index.get(key, []).copy()
+
+        # Jeśli podano tylko użytkownika, użyj indeksu użytkowników
+        elif 'user_id' in kwargs:
+            user_id = str(kwargs['user_id'])
+            filtered_events = self.user_index.get(user_id, []).copy()
+
+        # Jeśli podano tylko datę, użyj indeksu dat
+        elif 'date' in kwargs:
+            date_str = self._standardize_date(kwargs['date'])
+            filtered_events = self.date_index.get(date_str, []).copy()
+
+        # Jeśli podano tylko typ, użyj indeksu typów
+        elif 'type' in kwargs:
+            filtered_events = self.type_index.get(kwargs['type'], []).copy()
+
+        # W przeciwnym razie rozpocznij od wszystkich zdarzeń
+        else:
+            filtered_events = self.all_events.copy()
+
+        # Jeśli nie mamy punktu startowego, zwróć pustą listę
+        if filtered_events is None:
+            return []
+
+        # Zastosuj dodatkowe filtry
+        result = filtered_events
+
+        # Filtruj po datach od-do
+        if 'date_from' in kwargs:
+            date_from = self._standardize_date(kwargs['date_from'])
+            result = [e for e in result if self._standardize_date(e.get('date_key', '')) >= date_from]
+
+        if 'date_to' in kwargs:
+            date_to = self._standardize_date(kwargs['date_to'])
+            result = [e for e in result if self._standardize_date(e.get('date_key', '')) <= date_to]
+
+        # Filtruj po typie (jeśli nie użyto wcześniej indeksu typów)
+        if 'type' in kwargs and filtered_events != self.type_index.get(kwargs['type'], []):
+            result = [e for e in result if e.get('type', '') == kwargs['type']]
+
+        # Filtruj po user_id (jeśli nie użyto wcześniej indeksu użytkowników)
+        if 'user_id' in kwargs and filtered_events != self.user_index.get(str(kwargs['user_id']), []):
+            user_id = str(kwargs['user_id'])
+            result = [e for e in result if str(e.get('user_id', '')) == user_id]
+
+        # Filtruj po temacie
+        if 'topic' in kwargs:
+            topic_filter = kwargs['topic'].lower()
+            result = [e for e in result if topic_filter in str(e.get('topic', '')).lower()]
+
+        # Filtruj po nazwie
+        if 'name' in kwargs:
+            name_filter = kwargs['name'].lower()
+            result = [e for e in result if name_filter in str(e.get('name', '')).lower()]
+
+        # Filtruj po typach zdarzeń - lista dozwolonych typów
+        if 'allowed_types' in kwargs and kwargs['allowed_types']:
+            allowed_types = kwargs['allowed_types']
+            result = [e for e in result if e.get('type', '') in allowed_types]
+
+        return result
+
+    def _standardize_date(self, date_obj):
+        """
+        Standaryzuje format daty do 'YYYY-MM-DD'
+
+        Args:
+            date_obj: Data w dowolnym formacie (string, datetime, itp.)
+
+        Returns:
+            str: Data w formacie 'YYYY-MM-DD'
+        """
+        if not date_obj:
+            return ''
+
+        # Jeśli to już string, wyciągnij tylko datę
+        if isinstance(date_obj, str):
+            # Obsługa różnych formatów
+            if 'T' in date_obj:  # Format ISO 'YYYY-MM-DDThh:mm:ss'
+                return date_obj.split('T')[0]
+            elif ' ' in date_obj:  # Format 'YYYY-MM-DD hh:mm:ss'
+                return date_obj.split(' ')[0]
+            elif len(date_obj) == 10 and date_obj.count('-') == 2:  # Format 'YYYY-MM-DD'
+                return date_obj
+            elif len(date_obj) == 10 and date_obj.count('.') == 2:  # Format 'DD.MM.YYYY'
+                parts = date_obj.split('.')
+                if len(parts) == 3:
+                    return f"{parts[2]}-{parts[1]}-{parts[0]}"
+            # Jeśli nie dopasowano do żadnego formatu, zwróć oryginalny string
+            return date_obj
+
+        # Jeśli to obiekt datetime, skonwertuj na string
+        if hasattr(date_obj, 'strftime'):
+            return date_obj.strftime('%Y-%m-%d')
+
+        # W przypadku nieznanego typu, zwróć pusty string
+        return ''
