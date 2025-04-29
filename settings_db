@@ -1,0 +1,82 @@
+from db_connector import DatabaseConnector
+import os
+import getpass
+
+class SettingsDatabase:
+    """Klasa do obsługi bazy danych ustawień użytkownika w SQL Server"""
+
+    def __init__(self):
+        pass
+
+    def get_current_username(self):
+        """Pobiera nazwę użytkownika używając getpass"""
+        try:
+            import getpass
+            return getpass.getuser()
+        except:
+            try:
+                import os
+                return os.environ.get('USER') or os.environ.get('USERNAME') or 'unknown_user'
+            except:
+                return 'unknown_user'
+
+    def save_settings(self, theme, font_family, font_size, username=None):
+        """Zapisuje ustawienia użytkownika do bazy danych SQL Server"""
+        if username is None:
+            username = self.get_current_username()
+
+        try:
+            conn = DatabaseConnector.get_connection()
+            cursor = conn.cursor()
+
+            # Użyj procedury składowanej do zapisu ustawień
+            cursor.execute("""
+                EXEC SaveUserSettings @username=?, @theme=?, @font_family=?, @font_size=?
+            """, (username, theme, font_family, font_size))
+
+            conn.commit()
+            conn.close()
+            print(f"Ustawienia zapisane dla użytkownika {username}: {theme}, {font_family}, {font_size}")
+            return True
+        except Exception as e:
+            print(f"Błąd podczas zapisywania ustawień: {e}")
+            return False
+
+    def load_settings(self, username=None):
+        """Ładuje ustawienia użytkownika z bazy danych SQL Server"""
+        if username is None:
+            username = self.get_current_username()
+
+        try:
+            conn = DatabaseConnector.get_connection()
+            cursor = conn.cursor()
+
+            # Użyj procedury składowanej do odczytu ustawień
+            cursor.execute("""
+                EXEC GetUserSettings @username=?
+            """, (username,))
+
+            result = cursor.fetchone()
+            conn.close()
+
+            if result:
+                return {
+                    'theme': result[0],
+                    'font_family': result[1],
+                    'font_size': result[2]
+                }
+            else:
+                # Domyślne ustawienia
+                return {
+                    'theme': 'dark',
+                    'font_family': 'Arial',
+                    'font_size': 9
+                }
+        except Exception as e:
+            print(f"Błąd podczas ładowania ustawień: {e}")
+            # Zwróć domyślne wartości w przypadku błędu
+            return {
+                'theme': 'dark',
+                'font_family': 'Arial',
+                'font_size': 9
+            }
