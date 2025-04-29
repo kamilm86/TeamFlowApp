@@ -1,0 +1,161 @@
+from data_provider import DataProvider
+from data_processor import DataProcessor
+
+
+class ScheduleController:
+    """
+    Kontroler łączący model danych z widokiem.
+    Implementuje wzorzec MVC dla głównego okna aplikacji.
+    """
+
+    def __init__(self, view):
+        """
+        Inicjalizuje kontroler z odniesieniem do widoku.
+
+        Args:
+            view: Obiekt głównego okna aplikacji
+        """
+        self.view = view
+        self.data_provider = DataProvider()
+        self.data_processor = DataProcessor()
+
+    def load_month_data(self, year, month):
+        """
+        Ładuje dane dla wybranego miesiąca.
+
+        Args:
+            year: Rok
+            month: Miesiąc
+        """
+        try:
+            # Pobierz dane grafiku, zdarzeń i użytkowników
+            schedule_data = self.data_provider.get_schedule_data(year, month)
+            events_data = self.data_provider.get_events_data(year, month)
+            users_data = self.data_provider.get_users_data(year, month)
+
+            # Przetwórz dane
+            processed_schedule = self.data_processor.process_schedule_data(schedule_data)
+            processed_events = self.data_processor.process_events_data(events_data)
+            user_info_map = self.data_processor.get_user_info_map(users_data)
+
+            # Zbuduj indeks zdarzeń
+            events_index = self.data_processor.build_events_index(processed_events)
+
+            # Aktualizuj widok (główne okno aplikacji)
+            self.view.raw_data = schedule_data
+            self.view.processed_data = processed_schedule
+            self.view.all_events_data = processed_events
+            self.view.user_info_map = user_info_map
+            self.view.events_index = events_index
+
+            # Inicjalizacja widoku
+            self.view.visible_rows = list(range(len(processed_schedule)))
+            self.view.update_filters()
+            self.view.update_filtered_table()
+
+            return True
+
+        except Exception as e:
+            print(f"Błąd podczas ładowania danych miesiąca: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def filter_data(self, wydzialy=None, przelozeni=None, uzytkownicy=None, year=None, month=None):
+        """
+        Filtruje dane grafiku według podanych kryteriów.
+
+        Args:
+            wydzialy: Lista wybranych wydziałów
+            przelozeni: Lista wybranych przełożonych
+            uzytkownicy: Lista wybranych użytkowników
+            year: Rok (opcjonalnie, domyślnie bieżący)
+            month: Miesiąc (opcjonalnie, domyślnie bieżący)
+        """
+        try:
+            # Jeśli nie podano roku/miesiąca, użyj bieżącego
+            if year is None or month is None:
+                current_data = self.view.date_combo.currentData()
+                if current_data:
+                    year, month = current_data
+                else:
+                    return False
+
+            # Pobierz odfiltrowane dane
+            filtered_data = self.data_provider.filter_data(
+                year, month,
+                wydzialy=wydzialy,
+                przelozeni=przelozeni,
+                uzytkownicy=uzytkownicy
+            )
+
+            # Przetwórz dane
+            processed_data = self.data_processor.process_schedule_data(filtered_data)
+
+            # Aktualizuj dane w widoku
+            self.view.raw_data = filtered_data
+            self.view.processed_data = processed_data
+            self.view.visible_rows = list(range(len(processed_data)))
+
+            # Aktualizuj tabelę
+            self.view.update_table_content()
+
+            # Wyczyść tabelę zdarzeń
+            self.view.events_data = []
+            self.view.events_table.setRowCount(0)
+
+            return True
+
+        except Exception as e:
+            print(f"Błąd podczas filtrowania danych: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def get_events_for_selection(self, selected_cells):
+        """
+        Pobiera zdarzenia dla wybranych komórek grafiku.
+
+        Args:
+            selected_cells: Lista słowników z informacjami o wybranych komórkach
+        """
+        try:
+            # Pobierz rok i miesiąc
+            current_data = self.view.date_combo.currentData()
+            if not current_data:
+                return []
+
+            year, month = current_data
+
+            # Przygotuj pary (użytkownik, data)
+            user_date_pairs = []
+            for cell in selected_cells:
+                user_id = cell['uzytkownik_id']
+                day = cell['day']
+                date_str = f"{year}-{month:02d}-{day:02d}"
+                user_date_pairs.append((user_id, date_str))
+
+            # Pobierz zdarzenia dla par (użytkownik, data)
+            allowed_types = []
+            if self.view.meetings_checkbox.isChecked():
+                allowed_types.append('Spotkanie')
+            if self.view.trainings_checkbox.isChecked():
+                allowed_types.append('Szkolenie')
+            if self.view.overtime_checkbox.isChecked():
+                allowed_types.append('Nadgodziny')
+
+            events_data = self.data_provider.get_events_for_user_date_pairs(
+                user_date_pairs,
+                allowed_types=allowed_types
+            )
+
+            # Przetwórz dane zdarzeń
+            processed_events = self.data_processor.process_events_data(events_data)
+
+            return processed_events
+
+        except Exception as e:
+            print(f"Błąd podczas pobierania zdarzeń dla zaznaczenia: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
