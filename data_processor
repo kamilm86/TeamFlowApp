@@ -1,0 +1,159 @@
+from events_index import EventsIndex
+
+
+class DataProcessor:
+    """
+    Klasa odpowiedzialna za przetwarzanie danych pobranych z bazy.
+    Implementuje logikę biznesową do transformacji danych.
+    """
+
+    def process_schedule_data(self, data):
+        """
+        Przetwarza surowe dane grafiku z bazy danych na strukturę opartą na użytkowniku i dniu.
+
+        Args:
+            data: Lista krotek z bazy danych zawierająca dane grafiku
+
+        Returns:
+            dict: Słownik z przetworzonymi danymi
+        """
+        processed_data = {}
+
+        for row in data:
+            try:
+                # Rozpakowanie danych z wiersza
+                if len(row) >= 12:  # Z godziną początkową
+                    wydzial, przelozony, uzytkownik_dane, uzytkownik, data_str, symbol, godziny_pracy, id_wpisu, spotkania, szkolenia, nadgodziny, start_hour = row
+                elif len(row) >= 11:  # Bez godziny początkowej
+                    wydzial, przelozony, uzytkownik_dane, uzytkownik, data_str, symbol, godziny_pracy, id_wpisu, spotkania, szkolenia, nadgodziny = row
+                    start_hour = None
+                else:
+                    print(f"Nieprawidłowa liczba kolumn w wierszu: {len(row)}")
+                    continue
+
+                # Klucz dla grupy użytkownika
+                user_key = (wydzial, przelozony, uzytkownik_dane, uzytkownik)
+
+                # Inicjalizacja danych użytkownika, jeśli nie istnieją
+                if user_key not in processed_data:
+                    processed_data[user_key] = {'days': {}, 'total_hours': 0}
+
+                # Dodaj dane dnia, jeśli istnieje data
+                if data_str:
+                    day = int(data_str.split('-')[2])  # Dzień z daty w formacie 'YYYY-MM-DD'
+                    processed_data[user_key]['days'][day] = {
+                        'symbol': symbol,
+                        'hours': godziny_pracy if godziny_pracy is not None else 0,
+                        'id': id_wpisu,
+                        'spotkania': spotkania if spotkania is not None else 0,
+                        'szkolenia': szkolenia if szkolenia is not None else 0,
+                        'nadgodziny': nadgodziny if nadgodziny is not None else 0,
+                        'start_hour': start_hour,
+                        'date_str': data_str  # Pełna data dla łatwiejszego filtrowania
+                    }
+
+                    # Sumuj godziny pracy
+                    if godziny_pracy is not None:
+                        processed_data[user_key]['total_hours'] += godziny_pracy
+            except Exception as e:
+                print(f"Błąd podczas przetwarzania wiersza danych: {e}, liczba kolumn: {len(row)}")
+                print(f"Dane wiersza: {row}")
+                continue  # Kontynuuj z następnym wierszem w przypadku błędu
+
+        return processed_data
+
+    def process_events_data(self, events_data):
+        """
+        Przetwarza surowe dane zdarzeń z bazy danych na format do wyświetlenia.
+
+        Args:
+            events_data: Lista krotek z bazy danych zawierająca dane zdarzeń
+
+        Returns:
+            list: Lista słowników reprezentujących zdarzenia
+        """
+        processed_events = []
+
+        for row in events_data:
+            try:
+                # Rozpakowanie danych z wiersza
+                event_type, event_id, temat, nazwa, uzytkownik, data, data_od, data_do, status = row
+
+                # Formatowanie dat i godzin
+                if isinstance(data, str):
+                    date_str = data
+                    date_display = data.split(' ')[0] if ' ' in data else data
+                    # Konwertuj format daty z YYYY-MM-DD na DD.MM.YYYY
+                    date_parts = date_display.split('-')
+                    if len(date_parts) == 3:
+                        date_display = f"{date_parts[2]}.{date_parts[1]}.{date_parts[0]}"
+                else:
+                    date_str = data.strftime('%Y-%m-%d')
+                    date_display = data.strftime('%d.%m.%Y')
+
+                # Formatowanie czasu
+                time_from = data_od.strftime('%H:%M') if hasattr(data_od, 'strftime') else data_od
+                time_to = data_do.strftime('%H:%M') if hasattr(data_do, 'strftime') else data_do
+
+                # Tworzenie obiektu zdarzenia
+                event = {
+                    'type': event_type,
+                    'id': event_id,
+                    'topic': temat,
+                    'name': nazwa,
+                    'user_id': uzytkownik,
+                    'date': date_display,
+                    'date_key': date_str,
+                    'time_from': time_from,
+                    'time_to': time_to,
+                    'status': status
+                }
+
+                processed_events.append(event)
+
+            except Exception as e:
+                print(f"Błąd podczas przetwarzania wiersza danych zdarzenia: {e}")
+                continue
+
+        return processed_events
+
+    def build_events_index(self, events_data):
+        """
+        Buduje indeks zdarzeń na podstawie przetworzonych danych zdarzeń.
+
+        Args:
+            events_data: Lista przetworzonych zdarzeń
+
+        Returns:
+            EventsIndex: Zindeksowane zdarzenia
+        """
+        events_index = EventsIndex()
+        events_index.build_from_events(events_data)
+        return events_index
+
+    def get_user_info_map(self, users_data):
+        """
+        Buduje mapę informacji o użytkownikach na podstawie danych użytkowników.
+
+        Args:
+            users_data: Lista krotek z danymi użytkowników
+
+        Returns:
+            dict: Mapa użytkownik_id -> dane użytkownika
+        """
+        user_info_map = {}
+
+        for row in users_data:
+            try:
+                uzytkownik, wydzial, przelozony, uzytkownik_dane = row
+
+                user_info_map[uzytkownik] = {
+                    'wydzial': wydzial or 'Nieznany',
+                    'przelozony': przelozony or 'Nieznany',
+                    'uzytkownik_dane': uzytkownik_dane or str(uzytkownik)
+                }
+            except Exception as e:
+                print(f"Błąd podczas przetwarzania danych użytkownika: {e}")
+                continue
+
+        return user_info_map
