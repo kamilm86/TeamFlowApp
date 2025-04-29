@@ -1,0 +1,17 @@
+# config.py
+
+ENVIRONMENT = 'production'  # Zmień na 'development' dla lokalnego testowania
+
+DATABASE_CONFIG = {
+    'development': {
+        'ENGINE': 'QSQLITE',
+        'NAME': 'test.db'
+    },
+    'production': {
+        'ENGINE': 'mssql',
+        'DRIVER': 'ODBC Driver 17 for SQL Server',  # Sprawdź czy ten sterownik jest zainstalowany
+        'SERVER': 'localhost\\SQLEXPRESS',  # Zastąp faktycznym adresem serwera
+        'DATABASE': 'ZarzadzaniePraca',  # Zastąp faktyczną nazwą bazy
+        'TRUSTED_CONNECTION': 'yes'  # Lub dodaj USER/PASSWORD jeśli nie używasz integrated security
+    }
+}
