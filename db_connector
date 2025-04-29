@@ -1,0 +1,108 @@
+import sqlite3
+import pyodbc
+from config import DATABASE_CONFIG, ENVIRONMENT
+from datetime import datetime, timedelta
+import getpass
+
+class DatabaseConnector:
+    """
+    Klasa odpowiedzialna za połączenie z bazą danych
+    """
+
+    @staticmethod
+    def get_connection():
+        """
+        Zwraca połączenie do bazy danych na podstawie konfiguracji
+        """
+        db_config = DATABASE_CONFIG[ENVIRONMENT]
+
+        if db_config['ENGINE'] == 'QSQLITE':
+            conn = sqlite3.connect(db_config['NAME'])
+            return conn
+
+        elif db_config['ENGINE'] == 'mssql':
+            # Połączenie do MS SQL Server
+            connection_string = (
+                f"DRIVER={{{db_config['DRIVER']}}};"
+                f"SERVER={db_config['SERVER']};"
+                f"DATABASE={db_config['DATABASE']};"
+            )
+
+            # Dodaj uwierzytelnianie
+            if 'TRUSTED_CONNECTION' in db_config and db_config['TRUSTED_CONNECTION'] == 'yes':
+                connection_string += "Trusted_Connection=yes;"
+            else:
+                connection_string += f"UID={db_config['USER']};PWD={db_config['PASSWORD']};"
+
+            conn = pyodbc.connect(connection_string)
+            return conn
+
+        else:
+            raise ValueError(f"Nieobsługiwany silnik bazy danych: {db_config['ENGINE']}")
+
+    @staticmethod
+    def execute_query(query, params=None, fetch_all=True):
+        """
+        Wykonuje zapytanie SQL i zwraca wyniki
+
+        Args:
+            query (str): Zapytanie SQL
+            params (tuple): Parametry zapytania
+            fetch_all (bool): Czy pobrać wszystkie wyniki (True) czy tylko jeden (False)
+
+        Returns:
+            list/tuple: Wyniki zapytania
+        """
+        conn = DatabaseConnector.get_connection()
+        cursor = conn.cursor()
+
+        if params:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
+
+        if fetch_all:
+            result = cursor.fetchall()
+        else:
+            result = cursor.fetchone()
+
+        conn.commit()
+        conn.close()
+
+        return result
+
+
+# Funkcja zwracająca informacje o użytkowniku (ID, NumerKadrowy, RolaNazwa)
+def get_modifier_id():
+    """
+    Pobiera ID, numer kadrowy i rolę użytkownika zalogowanego do systemu.
+
+    Returns:
+        tuple: (user_id, user_app_id, user_app_role) - ID użytkownika, numer kadrowy, nazwa roli
+    """
+    username = getpass.getuser()
+    try:
+        conn = DatabaseConnector.get_connection()
+        cursor = conn.cursor()
+
+        # Pobierz informacje o użytkowniku na podstawie jego nazwy
+        query = "SELECT Id, NumerKadrowy, RolaNazwa FROM [dbo].[p_T_DO_KontaUzytkownikow] WHERE NumerKadrowy = '000001' or Imie = ? "
+        cursor.execute(query, (username,))
+        result = cursor.fetchone()
+        conn.close()
+
+        if result:
+            user_id = result[0]
+            user_app_id = result[1]  # NumerKadrowy
+            user_app_role = result[2]  # RolaNazwa
+            return user_id, user_app_id, user_app_role
+
+        # Wartości domyślne gdy nie znaleziono użytkownika
+        return "System", username, "Użytkownik"
+
+    except Exception as e:
+        print(f"Błąd podczas pobierania informacji o użytkowniku: {e}")
+        # Wartości domyślne w przypadku błędu
+        return "System", username, "Użytkownik"
+
+
