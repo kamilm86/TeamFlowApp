@@ -1,0 +1,325 @@
+"""
+Moduł zawierający definicje stylów QSS dla aplikacji TeamFlowApp.
+Centralizuje wszystkie style w jednym miejscu dla łatwego zarządzania.
+Zawiera mechanizm cache'owania dla poprawy wydajności.
+"""
+from PySide6.QtGui import QColor
+
+class AppStyles:
+    """
+    Klasa zawierająca style QSS aplikacji z podziałem na motywy (jasny i ciemny).
+    Zoptymalizowana pod kątem wydajności i cache'owania.
+    """
+    # Cache na wygenerowane arkusze stylów - kluczowym elementem optymalizacji
+    _style_cache = {}
+
+    # Cache na kolory tła i odpowiadające im kolory tekstu
+    _text_color_cache = {}
+
+    # Predefiniowane motywy kolorystyczne dla szybkiego dostępu
+    _theme_colors = {
+        "dark": {
+            "bg_main": "#1e1e1e",
+            "bg_secondary": "#2c2c2c",
+            "border": "#3a3a3a",
+            "text": "white",
+            "highlight": "#3498db",
+            "hover": "#3a3a3a",
+            "grid": "#3a3a3a",
+            "weekend_bg": "#800000",  # Ciemny czerwony dla tła weekendów
+            "weekend_text": "#ffcccc", # Jasny czerwony tekst dla weekendów
+            "error": "#e74c3c",
+            "warning": "#f39c12",
+            "success": "#2ecc71",
+            "button_text": "white",
+            "meeting_bg": "#6495ED",  # Cornflower Blue
+            "training_bg": "#90EE90",  # Light Green
+            "overtime_bg": "#FFA500",  # Orange
+            "os_symbol_bg": "#FFB400",  # Pomarańczowy dla OS
+            "u_symbol_bg": "#FFB400",   # Pomarańczowy dla U
+        },
+        "light": {
+            "bg_main": "#f5f5f5",
+            "bg_secondary": "#e0e0e0",
+            "border": "#cccccc",
+            "text": "black",
+            "highlight": "#3498db",
+            "hover": "#d0d0d0",
+            "grid": "#cccccc",
+            "weekend_bg": "#ffcccc",  # Jasny czerwony dla tła weekendów
+            "weekend_text": "#800000", # Ciemny czerwony tekst dla weekendów
+            "error": "#e74c3c",
+            "warning": "#f39c12",
+            "success": "#2ecc71",
+            "button_text": "black",
+            "meeting_bg": "#6495ED",  # Cornflower Blue
+            "training_bg": "#90EE90",  # Light Green
+            "overtime_bg": "#FFA500",  # Orange
+            "os_symbol_bg": "#FFB400",  # Pomarańczowy dla OS
+            "u_symbol_bg": "#FFB400",   # Pomarańczowy dla U
+        }
+    }
+
+    @staticmethod
+    def get_styles(theme="dark", font_family=None, font_size=None):
+        """
+        Zwraca style QSS dla wybranego motywu.
+        Zoptymalizowana wersja z wykorzystaniem predefinowanych kolorów.
+
+        Args:
+            theme (str): Motyw aplikacji ('dark' lub 'light')
+            font_family (str, optional): Rodzina czcionki
+            font_size (int, optional): Rozmiar czcionki
+
+        Returns:
+            dict: Słownik zawierający style CSS dla różnych elementów aplikacji
+        """
+        # Szybkie pobranie kolorów z cache
+        colors = AppStyles._theme_colors.get(theme, AppStyles._theme_colors["dark"])
+
+        # Optymalizacja: generowanie stringa czcionki tylko raz
+        font_str = ""
+        if font_family:
+            font_str += f"font-family: {font_family};"
+        if font_size:
+            font_str += f"font-size: {font_size}pt;"
+
+        # Styles dictionary - ograniczone do niezbędnych elementów dla lepszej wydajności
+        styles = {
+            # Główny styl aplikacji
+            "main": f"""
+                QMainWindow, QWidget {{
+                    background-color: {colors['bg_main']};
+                    color: {colors['text']};
+                    {font_str}
+                }}
+            """,
+
+            # Style dla przycisków
+            "button": f"""
+                QPushButton {{
+                    background-color: {colors['bg_secondary']};
+                    color: {colors['button_text']};
+                    border: 1px solid {colors['border']};
+                    padding: 5px;
+                    border-radius: 3px;
+                    {font_str}
+                }}
+                QPushButton:hover {{
+                    background-color: {colors['hover']};
+                }}
+                QPushButton:disabled {{
+                    background-color: {colors['bg_secondary']};
+                    color: {colors['border']};
+                }}
+                QPushButton[alert="true"] {{
+                    background-color: {colors['warning']}; 
+                    color: white;
+                    font-weight: bold;
+                    border: 2px solid #e67e22;
+                }}
+                QPushButton[delete="true"] {{
+                    background-color: {colors['error']};
+                    color: white;
+                    font-weight: bold;
+                }}
+            """,
+
+            # Style dla tabel - uproszczone dla lepszej wydajności
+            "table": f"""
+                QTableWidget {{
+                    background-color: {colors['bg_secondary']};
+                    color: {colors['text']};
+                    gridline-color: {colors['grid']};
+                    border: 1px solid {colors['border']};
+                    {font_str}
+                }}
+                QTableWidget::item {{
+                    padding: 4px;
+                }}
+                QTableWidget::item:selected {{
+                    background-color: {colors['highlight']};
+                    color: white;
+                }}
+            """,
+
+            # Style dla nagłówków
+            "header": f"""
+                QHeaderView {{
+                    background-color: {colors['bg_secondary']};
+                    color: {colors['text']};
+                }}
+                QHeaderView::section {{
+                    background-color: {colors['bg_secondary']};
+                    color: {colors['text']};
+                    border: 1px solid {colors['border']};
+                    padding: 4px;
+                }}
+            """,
+
+            # Wspólne style dla kontrolek z inputem - zoptymalizowane przez połączenie
+            "input_controls": f"""
+                QComboBox, QLineEdit, QDateEdit {{
+                    background-color: {colors['bg_secondary']};
+                    color: {colors['text']};
+                    border: 1px solid {colors['border']};
+                    padding: 5px;
+                    border-radius: 3px;
+                    {font_str}
+                }}
+                QComboBox::drop-down, QDateEdit::drop-down {{
+                    border: 0px;
+                    width: 20px;
+                }}
+                QComboBox QAbstractItemView, QDateEdit QAbstractItemView {{
+                    background-color: {colors['bg_secondary']};
+                    color: {colors['text']};
+                    selection-background-color: {colors['highlight']};
+                    selection-color: white;
+                    border: 1px solid {colors['border']};
+                }}
+            """,
+
+            # Style dla list
+            "list": f"""
+                QListWidget {{
+                    background-color: {colors['bg_secondary']};
+                    color: {colors['text']};
+                    border: 1px solid {colors['border']};
+                    border-radius: 3px;
+                    {font_str}
+                }}
+                QListWidget::item {{
+                    padding: 3px;
+                }}
+                QListWidget::item:selected {{
+                    background-color: {colors['highlight']};
+                    color: white;
+                }}
+            """,
+
+            # Pozostałe style
+            "misc": f"""
+                QLabel {{
+                    color: {colors['text']};
+                    {font_str}
+                }}
+                QCheckBox {{
+                    color: {colors['text']};
+                    {font_str}
+                }}
+                QCheckBox::indicator:checked {{
+                    background-color: {colors['highlight']};
+                    border: 1px solid {colors['border']};
+                }}
+                QCheckBox::indicator:unchecked {{
+                    background-color: {colors['bg_secondary']};
+                    border: 1px solid {colors['border']};
+                }}
+                QDialog {{
+                    background-color: {colors['bg_main']};
+                    color: {colors['text']};
+                }}
+                QWidget[filterPanel="true"] {{
+                    background-color: {colors['bg_main']};
+                    color: {colors['text']};
+                    border-right: 1px solid {colors['border']};
+                }}
+            """
+        }
+
+        return styles
+
+    @staticmethod
+    def combine_styles(styles_dict):
+        """
+        Łączy słownik stylów w jeden string QSS.
+        Zoptymalizowane przez połączenie stringów.
+
+        Args:
+            styles_dict (dict): Słownik zawierający style CSS
+
+        Returns:
+            str: Połączone style CSS jako jeden string
+        """
+        # Zamiast używać join, łączymy style w jednej operacji
+        combined = ""
+        for style in styles_dict.values():
+            combined += style
+        return combined
+
+    @staticmethod
+    def get_style_sheet(theme="dark", font_family=None, font_size=None):
+        """
+        Generuje gotowy arkusz stylów QSS dla aplikacji.
+        Wykorzystuje cache'owanie dla poprawy wydajności.
+
+        Args:
+            theme (str): Motyw aplikacji ('dark' lub 'light')
+            font_family (str, optional): Rodzina czcionki
+            font_size (int, optional): Rozmiar czcionki
+
+        Returns:
+            str: Arkusz stylów QSS
+        """
+        # Klucz cache'a
+        cache_key = f"{theme}_{font_family}_{font_size}"
+
+        # Sprawdź czy styl jest już w cache'u - kluczowa optymalizacja
+        if cache_key in AppStyles._style_cache:
+            return AppStyles._style_cache[cache_key]
+
+        # Wygeneruj style tylko jeśli nie ma ich w cache
+        styles = AppStyles.get_styles(theme, font_family, font_size)
+        style_sheet = AppStyles.combine_styles(styles)
+
+        # Zapisz w cache'u dla przyszłych wywołań
+        AppStyles._style_cache[cache_key] = style_sheet
+
+        return style_sheet
+
+    @staticmethod
+    def clear_cache():
+        """Czyści cache stylów i kolorów tekstu"""
+        AppStyles._style_cache.clear()
+        AppStyles._text_color_cache.clear()
+
+    @staticmethod
+    def get_text_color_for_background(bg_color):
+        """
+        Zwraca odpowiedni kolor tekstu (biały lub czarny) dla podanego koloru tła.
+        Zoptymalizowana wersja z wykorzystaniem cache'u.
+
+        Args:
+            bg_color: Kolor tła (QColor lub nazwa koloru)
+
+        Returns:
+            QColor: Biały lub czarny kolor tekstu
+        """
+        # Przekształć na string jeśli to QColor
+        if not isinstance(bg_color, str):
+            bg_color_key = bg_color.name()
+        else:
+            bg_color_key = bg_color
+
+        # Sprawdź czy wynik jest już w cache
+        if bg_color_key in AppStyles._text_color_cache:
+            return AppStyles._text_color_cache[bg_color_key]
+
+        # Jeśli to string, konwertuj na QColor
+        if isinstance(bg_color, str):
+            bg_color = QColor(bg_color)
+
+        # Oblicz jasność koloru (wzór YIQ)
+        brightness = (bg_color.red() * 299 + bg_color.green() * 587 + bg_color.blue() * 114) / 1000
+
+        # Dla jasnych kolorów tła użyj czarnego tekstu, dla ciemnych - białego
+        if brightness > 128:
+            result = QColor(0, 0, 0)  # Czarny
+        else:
+            result = QColor(255, 255, 255)  # Biały
+
+        # Zapisz wynik w cache
+        AppStyles._text_color_cache[bg_color_key] = result
+
+        return result
