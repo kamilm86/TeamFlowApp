@@ -1,0 +1,409 @@
+from db_connector import DatabaseConnector
+
+
+class DataProvider:
+    """
+    Klasa do obsługi pobierania danych z bazy danych.
+    Implementuje wzorzec fasady do wszystkich operacji na bazie danych.
+    """
+
+    def __init__(self):
+        self.db_connector = DatabaseConnector
+
+    def get_data_from_table_function(self, year, month, wydzial=None, przelozony=None, uzytkownik=None):
+        """Pobiera dane grafiku używając funkcji tabelarycznej SQL"""
+        try:
+            query = """
+            SELECT * FROM [dbo].[fn_GetScheduleData](?, ?, ?, ?, ?)
+            ORDER BY WydzialGrafik, PrzelozonyDane, UzytkownikDane, Data
+            """
+
+            conn = self.db_connector.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(query, (year, month, wydzial, przelozony, uzytkownik))
+            data = cursor.fetchall()
+            conn.close()
+
+            return data
+        except Exception as e:
+            print(f"Błąd podczas pobierania danych z funkcji tabelarycznej: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def get_schedule_data(self, year, month):
+        """Pobiera dane grafiku dla określonego roku i miesiąca"""
+        try:
+            query = """
+            SELECT 
+                k.WydzialGrafik, 
+                k.PrzelozonyDane, 
+                k.UzytkownikDane, 
+                k.Uzytkownik,
+                CONVERT(VARCHAR(10), g.Data, 120) AS Data, 
+                g.Symbol,
+                DATEDIFF(hour, g.DataOd, g.DataDo) AS godziny_pracy, 
+                g.Id,
+                CASE WHEN s.Id IS NOT NULL THEN 1 ELSE 0 END AS Spotkania,
+                CASE WHEN sz.Id IS NOT NULL THEN 1 ELSE 0 END AS Szkolenia,
+                CASE WHEN n.Id IS NOT NULL THEN 1 ELSE 0 END AS Nadgodziny,
+                DATEPART(HOUR,g.DataOd) start_hour 
+            FROM 
+                p_v_zz_GrafikiPracy g
+            LEFT JOIN 
+                p_t_do_KonfiguracjaZatrudnienie k ON k.Uzytkownik = g.Uzytkownik 
+                                              AND k.Rok = g.Rok 
+                                              AND k.Miesiac = g.Miesiac
+            LEFT JOIN 
+                (SELECT DISTINCT Uzytkownik, Data, MIN(Id) AS Id 
+                 FROM [dbo].[p_v_zz_Spotkania] 
+                 WHERE Rok = ? AND Miesiac = ? AND Status = 1
+                 GROUP BY Uzytkownik, Data) s ON g.Uzytkownik = s.Uzytkownik AND g.Data = s.Data
+            LEFT JOIN 
+                (SELECT DISTINCT Uzytkownik, Data, MIN(Id) AS Id 
+                 FROM [dbo].[p_v_zz_Szkolenia] 
+                 WHERE Rok = ? AND Miesiac = ?  AND Status = 1
+                 GROUP BY Uzytkownik, Data) sz ON g.Uzytkownik = sz.Uzytkownik AND g.Data = sz.Data
+            LEFT JOIN 
+                (SELECT DISTINCT Uzytkownik, Data, MIN(Id) AS Id 
+                 FROM [dbo].[p_T_ZZ_Nadgodziny] 
+                 WHERE Rok = ? AND Miesiac = ?
+                 GROUP BY Uzytkownik, Data) n ON g.Uzytkownik = n.Uzytkownik AND g.Data = n.Data
+            WHERE 
+                g.Rok = ? AND g.Miesiac = ? AND k.Flaga = 1
+            ORDER BY
+                k.WydzialGrafik, k.PrzelozonyDane, k.UzytkownikDane, g.Data
+            """
+
+            conn = self.db_connector.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(query, (year, month, year, month, year, month, year, month))
+            schedule_data = cursor.fetchall()
+            conn.close()
+
+            return schedule_data
+        except Exception as e:
+            print(f"Błąd podczas pobierania danych grafiku: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def get_events_data(self, year, month):
+        """Pobiera dane zdarzeń dla określonego roku i miesiąca"""
+        try:
+            query = """
+            -- Spotkania
+            SELECT 'Spotkanie' AS EventType, 
+                   Id, Temat, Nazwa, Uzytkownik, Data, DataOd, DataDo, StatusNazwa
+            FROM p_v_zz_Spotkania
+            WHERE Rok = ? AND Miesiac = ? AND Status = 1
+
+            UNION ALL
+
+            -- Szkolenia
+            SELECT 'Szkolenie' AS EventType,
+                   Id, Temat, Nazwa, Uzytkownik, Data, DataOd, DataDo, StatusNazwa
+            FROM p_v_zz_Szkolenia
+            WHERE Rok = ? AND Miesiac = ? AND Status = 1
+
+            UNION ALL
+
+            -- Nadgodziny
+            SELECT 'Nadgodziny' AS EventType,
+                   Id, 'Nadgodziny' AS Temat, 'Nadgodziny' AS Nazwa, 
+                   Uzytkownik, Data, DataOd, DataDo, 'Wstawione' AS StatusNazwa
+            FROM p_t_zz_Nadgodziny
+            WHERE Rok = ? AND Miesiac = ? AND [StatusRozliczenia] = 1
+            """
+
+            conn = self.db_connector.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(query, (year, month, year, month, year, month))
+            events_data = cursor.fetchall()
+            conn.close()
+
+            return events_data
+        except Exception as e:
+            print(f"Błąd podczas pobierania danych zdarzeń: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def get_users_data(self, year, month):
+        """Pobiera dane użytkowników dla określonego roku i miesiąca"""
+        try:
+            query = """
+            SELECT Uzytkownik, WydzialGrafik, PrzelozonyDane, UzytkownikDane
+            FROM p_t_do_KonfiguracjaZatrudnienie
+            WHERE Rok = ? AND Miesiac = ? AND Flaga = 1
+            """
+
+            conn = self.db_connector.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(query, (year, month))
+            users_data = cursor.fetchall()
+            conn.close()
+
+            return users_data
+        except Exception as e:
+            print(f"Błąd podczas pobierania danych użytkowników: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def filter_data(self, year, month, wydzialy=None, przelozeni=None, uzytkownicy=None):
+        """Filtruje dane grafiku według podanych kryteriów"""
+        try:
+            # Budowanie dynamicznego zapytania SQL
+            base_query = """
+            SELECT 
+                k.WydzialGrafik, 
+                k.PrzelozonyDane, 
+                k.UzytkownikDane, 
+                k.Uzytkownik,
+                CONVERT(VARCHAR(10), g.Data, 120) AS Data, 
+                g.Symbol,
+                DATEDIFF(hour, g.DataOd, g.DataDo) AS godziny_pracy, 
+                g.Id,
+                CASE WHEN s.Id IS NOT NULL THEN 1 ELSE 0 END AS Spotkania,
+                CASE WHEN sz.Id IS NOT NULL THEN 1 ELSE 0 END AS Szkolenia,
+                CASE WHEN n.Id IS NOT NULL THEN 1 ELSE 0 END AS Nadgodziny,
+                DATEPART(HOUR,g.DataOd) start_hour 
+            FROM 
+                p_v_zz_GrafikiPracy g
+            JOIN 
+                p_t_do_KonfiguracjaZatrudnienie k ON k.Uzytkownik = g.Uzytkownik 
+                                              AND k.Rok = g.Rok 
+                                              AND k.Miesiac = g.Miesiac
+            LEFT JOIN 
+                (SELECT DISTINCT Uzytkownik, Data, MIN(Id) AS Id 
+                 FROM [dbo].[p_v_zz_Spotkania] 
+                 WHERE Rok = ? AND Miesiac = ? AND Status = 1
+                 GROUP BY Uzytkownik, Data) s ON g.Uzytkownik = s.Uzytkownik AND g.Data = s.Data
+            LEFT JOIN 
+                (SELECT DISTINCT Uzytkownik, Data, MIN(Id) AS Id 
+                 FROM [dbo].[p_v_zz_Szkolenia] 
+                 WHERE Rok = ? AND Miesiac = ?  AND Status = 1
+                 GROUP BY Uzytkownik, Data) sz ON g.Uzytkownik = sz.Uzytkownik AND g.Data = sz.Data
+            LEFT JOIN 
+                (SELECT DISTINCT Uzytkownik, Data, MIN(Id) AS Id 
+                 FROM [dbo].[p_T_ZZ_Nadgodziny] 
+                 WHERE Rok = ? AND Miesiac = ?
+                 GROUP BY Uzytkownik, Data) n ON g.Uzytkownik = n.Uzytkownik AND g.Data = n.Data
+            WHERE 
+                g.Rok = ? AND g.Miesiac = ? AND k.Flaga = 1
+            """
+
+            # Parametry podstawowe
+            params = [year, month, year, month, year, month, year, month]
+
+            # Dodatkowe warunki filtrowania
+            additional_conditions = []
+
+            # Filtrowanie po wydziale
+            if wydzialy and len(wydzialy) > 0:
+                placeholders = ", ".join(["?" for _ in wydzialy])
+                additional_conditions.append(f"k.WydzialGrafik IN ({placeholders})")
+                params.extend(wydzialy)
+
+            # Filtrowanie po przełożonym
+            if przelozeni and len(przelozeni) > 0:
+                placeholders = ", ".join(["?" for _ in przelozeni])
+                additional_conditions.append(f"k.PrzelozonyDane IN ({placeholders})")
+                params.extend(przelozeni)
+
+            # Filtrowanie po użytkowniku
+            if uzytkownicy and len(uzytkownicy) > 0:
+                placeholders = ", ".join(["?" for _ in uzytkownicy])
+                additional_conditions.append(f"k.UzytkownikDane IN ({placeholders})")
+                params.extend(uzytkownicy)
+
+            # Dodaj warunki filtrowania do zapytania
+            if additional_conditions:
+                base_query += " AND " + " AND ".join(additional_conditions)
+
+            # Dodaj sortowanie
+            base_query += " ORDER BY k.WydzialGrafik, k.PrzelozonyDane, k.UzytkownikDane, g.Data"
+
+            # Wykonaj zapytanie
+            conn = self.db_connector.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(base_query, params)
+            filtered_data = cursor.fetchall()
+            conn.close()
+
+            return filtered_data
+
+        except Exception as e:
+            print(f"Błąd podczas filtrowania danych: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def filter_events(self, year, month, date_from=None, date_to=None,
+                      allowed_types=None, topic=None, name=None, user_ids=None):
+        """Filtruje zdarzenia według podanych kryteriów"""
+        try:
+            # Budowa zapytania bazowego
+            base_query = """
+            SELECT EventType, Id, Temat, Nazwa, Uzytkownik, Data, DataOd, DataDo, StatusNazwa
+            FROM (
+                -- Spotkania
+                SELECT 'Spotkanie' AS EventType, 
+                       Id, Temat, Nazwa, Uzytkownik, Data, DataOd, DataDo, StatusNazwa
+                FROM p_v_zz_Spotkania
+                WHERE Rok = ? AND Miesiac = ? AND Status = 1
+
+                UNION ALL
+
+                -- Szkolenia
+                SELECT 'Szkolenie' AS EventType,
+                       Id, Temat, Nazwa, Uzytkownik, Data, DataOd, DataDo, StatusNazwa
+                FROM p_v_zz_Szkolenia
+                WHERE Rok = ? AND Miesiac = ? AND Status = 1
+
+                UNION ALL
+
+                -- Nadgodziny
+                SELECT 'Nadgodziny' AS EventType,
+                       Id, 'Nadgodziny' AS Temat, 'Nadgodziny' AS Nazwa, 
+                       Uzytkownik, Data, DataOd, DataDo, 'Wstawione' AS StatusNazwa
+                FROM p_t_zz_Nadgodziny
+                WHERE Rok = ? AND Miesiac = ? AND [StatusRozliczenia] = 1
+            ) AS AllEvents
+            WHERE 1=1
+            """
+
+            # Parametry podstawowe
+            params = [year, month, year, month, year, month]
+
+            # Dodatkowe warunki filtrowania
+            # Filtrowanie po zakresie dat
+            if date_from:
+                base_query += " AND Data >= ?"
+                params.append(date_from)
+
+            if date_to:
+                base_query += " AND Data <= ?"
+                params.append(date_to)
+
+            # Filtrowanie po typach zdarzeń
+            if allowed_types and len(allowed_types) > 0:
+                placeholders = ", ".join(["?" for _ in allowed_types])
+                base_query += f" AND EventType IN ({placeholders})"
+                params.extend(allowed_types)
+
+            # Filtrowanie po temacie
+            if topic:
+                base_query += " AND Temat LIKE ?"
+                params.append(f"%{topic}%")
+
+            # Filtrowanie po nazwie
+            if name:
+                base_query += " AND Nazwa LIKE ?"
+                params.append(f"%{name}%")
+
+            # Filtrowanie po użytkownikach
+            if user_ids and len(user_ids) > 0:
+                placeholders = ", ".join(["?" for _ in user_ids])
+                base_query += f" AND Uzytkownik IN ({placeholders})"
+                params.extend(user_ids)
+
+            # Sortowanie
+            base_query += " ORDER BY Data, DataOd"
+
+            # Wykonaj zapytanie
+            conn = self.db_connector.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(base_query, params)
+            filtered_events = cursor.fetchall()
+            conn.close()
+
+            return filtered_events
+
+        except Exception as e:
+            print(f"Błąd podczas filtrowania zdarzeń: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def get_events_for_user_date_pairs(self, user_date_pairs, allowed_types=None):
+        """
+        Pobiera zdarzenia dla listy par (użytkownik, data)
+
+        Args:
+            user_date_pairs: Lista krotek (user_id, date_str) gdzie date_str jest w formacie 'YYYY-MM-DD'
+            allowed_types: Lista dozwolonych typów zdarzeń (np. ['Spotkanie', 'Szkolenie'])
+
+        Returns:
+            list: Lista zdarzeń pasujących do podanych par (użytkownik, data)
+        """
+        if not user_date_pairs:
+            return []
+
+        try:
+            # Buduj warunki WHERE dla każdej pary (użytkownik, data)
+            conditions = []
+            params = []
+
+            for user_id, date_str in user_date_pairs:
+                conditions.append("(Uzytkownik = ? AND CONVERT(VARCHAR(10), Data, 120) = ?)")
+                params.append(user_id)
+                params.append(date_str)
+
+            # Buduj zapytanie bazowe
+            base_query = """
+            SELECT EventType, Id, Temat, Nazwa, Uzytkownik, 
+                   CONVERT(VARCHAR(10), Data, 120) AS Data, 
+                   CONVERT(VARCHAR(5), DataOd, 108) AS DataOd, 
+                   CONVERT(VARCHAR(5), DataDo, 108) AS DataDo, 
+                   StatusNazwa
+            FROM (
+                -- Spotkania
+                SELECT 'Spotkanie' AS EventType, 
+                       Id, Temat, Nazwa, Uzytkownik, Data, DataOd, DataDo, StatusNazwa
+                FROM p_v_zz_Spotkania
+                WHERE Status = 1
+
+                UNION ALL
+
+                -- Szkolenia
+                SELECT 'Szkolenie' AS EventType,
+                       Id, Temat, Nazwa, Uzytkownik, Data, DataOd, DataDo, StatusNazwa
+                FROM p_v_zz_Szkolenia
+                WHERE Status = 1
+
+                UNION ALL
+
+                -- Nadgodziny
+                SELECT 'Nadgodziny' AS EventType,
+                       Id, 'Nadgodziny' AS Temat, 'Nadgodziny' AS Nazwa, 
+                       Uzytkownik, Data, DataOd, DataDo, 'Wstawione' AS StatusNazwa
+                FROM p_t_zz_Nadgodziny
+                WHERE [StatusRozliczenia] = 1
+            ) AS AllEvents
+            WHERE """ + " OR ".join(conditions)
+
+            # Dodaj filtrowanie po typach, jeśli podano
+            if allowed_types and len(allowed_types) > 0:
+                placeholders = ", ".join(["?" for _ in allowed_types])
+                base_query += f" AND EventType IN ({placeholders})"
+                params.extend(allowed_types)
+
+            # Sortowanie
+            base_query += " ORDER BY Data, DataOd"
+
+            # Wykonaj zapytanie
+            conn = self.db_connector.get_connection()
+            cursor = conn.cursor()
+            cursor.execute(base_query, params)
+            events = cursor.fetchall()
+            conn.close()
+
+            return events
+
+        except Exception as e:
+            print(f"Błąd podczas pobierania zdarzeń dla par (użytkownik, data): {e}")
+            import traceback
+            traceback.print_exc()
+            return []
